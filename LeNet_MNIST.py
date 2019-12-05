@@ -10,18 +10,12 @@ import os
 import argparse
 from my_utils import LogPrint, set_up_dir, get_CodeID, feat_visualize, check_path
 
-batch_size = 128
-epoch = 60
-learning_rate = 0.001
-alpha = 0.01
-path = './SBP_model'
-pretrain = False
-
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', type=float, default=0.001)
+parser.add_argument('--sbp_lr', type=float, default=2e-5)
 parser.add_argument('--path', type=str, default="./SBP_model")
 parser.add_argument('--alpha', type=float, default=0.01)
-parser.add_argument('--n_epoch', type=int, default=60)
+parser.add_argument('--n_epoch', type=int, default=30) # it was 60
 parser.add_argument('--n_finetune_epoch', type=int, default=300)
 parser.add_argument('-b', '--batch_size', type=int, default=128)
 parser.add_argument('--pretrain', action="store_true")
@@ -54,21 +48,21 @@ train_set = dset.MNIST(root='./data',
                        download=True,
                        transform=transform_train)
 train_loader = torch.utils.data.DataLoader(train_set, batch_size=opt.batch_size,
-                                           shuffle=True, num_workers=2)
+                      shuffle=True, num_workers=2)
 
 test_set = dset.MNIST(root='./data',
                       train=False,
                       download=True,
                       transform=transform_test)
 test_loader = torch.utils.data.DataLoader(test_set, batch_size=opt.batch_size,
-                                          shuffle=False, num_workers=2)
+                      shuffle=False, num_workers=2)
 
 
 params = [
     {'params': lenet.parameters()},
  ]
-optimizer = optim.Adam(params, lr=learning_rate, weight_decay=5e-4)
-scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20,40], gamma=0.1)
+optimizer = optim.Adam(params, lr=opt.lr, weight_decay=5e-4)
+scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 40], gamma=0.1)
 
 num_batch = len(train_loader)
 criterion = nn.CrossEntropyLoss()
@@ -97,37 +91,37 @@ if opt.pretrain:
         train_accuracy = accuracy(train_loader, lenet)
         test_accuracy = accuracy(test_loader, lenet)
         lenet.train()
-        if(test_accuracy>=best_result):
+        if (test_accuracy >= best_result):
             best_result = test_accuracy
             torch.save(lenet.state_dict(), os.path.join(opt.path, 'lenet_best.pt'))
         logprint('Epoch [%d], Loss: %.4f, KL: %.4f, Train accuracy: %.4f, Test accuracy: %.4f, Best: %.4f' % (e, running_loss/num_batch, running_klloss/num_batch,train_accuracy, test_accuracy, best_result))
 
-alex_path = os.path.join(opt.path, "lenet_best.pt")
-lenet_best = LeNet()
-lenet_best.load_state_dict(torch.load(alex_path))
+lenet_path = os.path.join(opt.path, "lenet_best.pt")
+lenet_best = LeNet().cuda()
+lenet_best.load_state_dict(torch.load(lenet_path))
+baseline_acc = accuracy(test_loader, lenet_best)
+logprint("loaded pretrained model. baseline acc = %.4f" % baseline_acc)
 
 lenet_sbp = LeNet_SBP()
-sbp_learningrate = 2e-5
 sbp_parameters = [
     {'params': lenet_sbp.conv1.weight},
     {'params': lenet_sbp.conv2.weight},
     {'params': lenet_sbp.fc1.weight},
     {'params': lenet_sbp.fc2.weight},
 
-    {'params': lenet_sbp.sbp_1.log_sigma, 'lr': 10*sbp_learningrate},
-    {'params': lenet_sbp.sbp_2.log_sigma, 'lr': 10*sbp_learningrate},
-    {'params': lenet_sbp.sbp_3.log_sigma, 'lr': 10*sbp_learningrate},
-    {'params': lenet_sbp.sbp_4.log_sigma, 'lr': 10*sbp_learningrate},
+    {'params': lenet_sbp.sbp_1.log_sigma, 'lr': 10*opt.sbp_lr},
+    {'params': lenet_sbp.sbp_2.log_sigma, 'lr': 10*opt.sbp_lr},
+    {'params': lenet_sbp.sbp_3.log_sigma, 'lr': 10*opt.sbp_lr},
+    {'params': lenet_sbp.sbp_4.log_sigma, 'lr': 10*opt.sbp_lr},
 
-    {'params': lenet_sbp.sbp_1.mu, 'lr': 10*sbp_learningrate},
-    {'params': lenet_sbp.sbp_2.mu, 'lr': 10*sbp_learningrate},
-    {'params': lenet_sbp.sbp_3.mu, 'lr': 10*sbp_learningrate},
-    {'params': lenet_sbp.sbp_4.mu, 'lr': 10*sbp_learningrate},
-
+    {'params': lenet_sbp.sbp_1.mu, 'lr': 10*opt.sbp_lr},
+    {'params': lenet_sbp.sbp_2.mu, 'lr': 10*opt.sbp_lr},
+    {'params': lenet_sbp.sbp_3.mu, 'lr': 10*opt.sbp_lr},
+    {'params': lenet_sbp.sbp_4.mu, 'lr': 10*opt.sbp_lr},
  ]
 
-sbp_optimizer = optim.Adam(sbp_parameters, lr=sbp_learningrate, betas=[0.95,0.999])
-sbp_scheduler = optim.lr_scheduler.StepLR(sbp_optimizer, step_size= 250,gamma=0.1)
+sbp_optimizer = optim.Adam(sbp_parameters, lr=opt.sbp_lr, betas=[0.95, 0.999])
+sbp_scheduler = optim.lr_scheduler.StepLR(sbp_optimizer, step_size=250, gamma=0.1)
 
 lenet_sbp.conv1.weight = lenet_best.conv1.weight
 lenet_sbp.conv2.weight = lenet_best.conv2.weight
@@ -140,32 +134,30 @@ for e in range(opt.n_finetune_epoch):
     running_loss = 0.0
     running_klloss = 0.0
     for x_batch, y_batch in train_loader:
-
+    
         x_batch, y_batch = Variable(x_batch.cuda()), Variable(y_batch.cuda(async=True))
-        prediction,kl_loss = lenet_sbp(x_batch)
-
-        loss = criterion(prediction, y_batch) +  kl_loss
-
+        prediction, kl_loss = lenet_sbp(x_batch)
+        loss = criterion(prediction, y_batch) + kl_loss
         sbp_optimizer.zero_grad()
         loss.backward()
         sbp_optimizer.step()
 
         batch_loss = loss.item()
         running_loss += batch_loss
-        running_klloss+=kl_loss
+        running_klloss += kl_loss
 
     lenet_sbp.eval()
     train_accuracy = accuracy(train_loader, lenet_sbp)
     test_accuracy = accuracy(test_loader, lenet_sbp)
     lenet_sbp.train()
-    if(test_accuracy>=best_result):
+    if test_accuracy >= best_result:
         best_result = test_accuracy
 
-
-    logprint('Epoch [%d], Loss: %.4f, KL: %.4f, Train accuracy: %.4f, Test accuracy: %.4f, Best: %.4f' % (e, running_loss/num_batch, running_klloss/num_batch,train_accuracy, test_accuracy, best_result))
+    logprint('Epoch [%d], Loss: %.4f, KL: %.4f, Train accuracy: %.4f, Test accuracy: %.4f, Best: %.4f' % (e, running_loss/num_batch, running_klloss/num_batch, train_accuracy, test_accuracy, best_result))
     if (e + 1)% 5 == 0:
         sparsity_arr = lenet_sbp.layerwise_sparsity()
-        logprint('l1-Sparsity: %.4f, l2-Sparsity: %.4f, l3-Sparsity: %.4f, l4-Sparsity: %.4f' %(sparsity_arr[0], sparsity_arr[1], sparsity_arr[2],sparsity_arr[3]))
+        logprint('l1-Sparsity: %.4f, l2-Sparsity: %.4f, l3-Sparsity: %.4f, l4-Sparsity: %.4f' % (sparsity_arr[0], sparsity_arr[1], 
+            sparsity_arr[2], sparsity_arr[3]))
         snr_arr = lenet_sbp.display_snr()
         logprint('l1-snr: %.4f, l2-snr: %.4f, l3-snr: %.4f, l4-snr: %.4f' % (
             snr_arr[0], snr_arr[1], snr_arr[2], snr_arr[3]))
