@@ -130,34 +130,35 @@ lenet_sbp.fc2.weight = lenet_best.fc2.weight
 lenet_sbp.cuda()
 
 for e in range(opt.n_finetune_epoch):
-    lenet_sbp.train()
-    running_loss = 0.0
-    running_klloss = 0.0
-    for x_batch, y_batch in train_loader:
-    
-        x_batch, y_batch = Variable(x_batch.cuda()), Variable(y_batch.cuda(async=True))
-        prediction, kl_loss = lenet_sbp(x_batch)
-        loss = criterion(prediction, y_batch) + kl_loss
-        sbp_optimizer.zero_grad()
-        loss.backward()
-        sbp_optimizer.step()
+  lenet_sbp.train()
+  running_loss = 0.0
+  running_klloss = 0.0
+  for x_batch, y_batch in train_loader:
+  
+      x_batch, y_batch = Variable(x_batch.cuda()), Variable(y_batch.cuda(async=True))
+      prediction, kl_loss = lenet_sbp(x_batch)
+      loss = criterion(prediction, y_batch) + kl_loss
+      sbp_optimizer.zero_grad()
+      loss.backward()
+      sbp_optimizer.step()
 
-        batch_loss = loss.item()
-        running_loss += batch_loss
-        running_klloss += kl_loss
+      batch_loss = loss.item()
+      running_loss += batch_loss
+      running_klloss += kl_loss
 
-    lenet_sbp.eval()
-    train_accuracy = accuracy(train_loader, lenet_sbp)
-    test_accuracy = accuracy(test_loader, lenet_sbp)
-    lenet_sbp.train()
-    if test_accuracy >= best_result:
-        best_result = test_accuracy
+  lenet_sbp.eval()
+  train_accuracy = accuracy(train_loader, lenet_sbp)
+  test_accuracy = accuracy(test_loader, lenet_sbp)
+  lenet_sbp.train()
+  if test_accuracy >= best_result:
+      best_result = test_accuracy
 
-    logprint('Epoch [%d], Loss: %.4f, KL: %.4f, Train accuracy: %.4f, Test accuracy: %.4f, Best: %.4f' % (e, running_loss/num_batch, running_klloss/num_batch, train_accuracy, test_accuracy, best_result))
-    if (e + 1)% 5 == 0:
-        sparsity_arr = lenet_sbp.layerwise_sparsity()
-        logprint('l1-Sparsity: %.4f, l2-Sparsity: %.4f, l3-Sparsity: %.4f, l4-Sparsity: %.4f' % (sparsity_arr[0], sparsity_arr[1], 
-            sparsity_arr[2], sparsity_arr[3]))
-        snr_arr = lenet_sbp.display_snr()
-        logprint('l1-snr: %.4f, l2-snr: %.4f, l3-snr: %.4f, l4-snr: %.4f' % (
-            snr_arr[0], snr_arr[1], snr_arr[2], snr_arr[3]))
+  logprint('Epoch [%d], Loss: %.4f, KL: %.4f, Train accuracy: %.4f, Test accuracy: %.4f, Best: %.4f' % (e, running_loss/num_batch, running_klloss/num_batch, train_accuracy, test_accuracy, best_result))
+  if (e + 1)% 5 == 0:
+      sparsity_arr = lenet_sbp.layerwise_sparsity()
+      logprint('l1-Sparsity: %.4f, l2-Sparsity: %.4f, l3-Sparsity: %.4f, l4-Sparsity: %.4f' % (sparsity_arr[0], sparsity_arr[1], 
+          sparsity_arr[2], sparsity_arr[3]))
+      snr_arr = lenet_sbp.display_snr()
+      logprint('l1-snr: %.4f, l2-snr: %.4f, l3-snr: %.4f, l4-snr: %.4f' % (
+          snr_arr[0], snr_arr[1], snr_arr[2], snr_arr[3]))
+torch.save(lenet_sbp.state_dict(), os.path.join(weights_path, 'lenet_sbp_final_result.pt'))
