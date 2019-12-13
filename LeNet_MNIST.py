@@ -69,7 +69,7 @@ criterion = nn.CrossEntropyLoss()
 best_result = 0
 
 if opt.pretrain:
-    for e in range(epoch):
+    for e in range(opt.n_epoch):
         lenet.train()
         running_loss = 0.0
         running_klloss = 0.0

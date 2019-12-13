@@ -57,8 +57,9 @@ class LeNet(nn.Module):
         super(LeNet, self).__init__()
         self.conv1 = nn.Conv2d(1, 20, 5)
         self.conv2 = nn.Conv2d(20, 50, 5)
-        self.fc1   = nn.Linear(800, 500)
-        self.fc2   = nn.Linear(500, 10)
+        self.fc1 = nn.Linear(800, 800)
+        self.fc2 = nn.Linear(800, 500)
+        self.fc3 = nn.Linear(500, 10)
 
 
     def forward(self, x):
@@ -72,6 +73,8 @@ class LeNet(nn.Module):
         out = self.fc1(out)
         out = F.relu(out)
         out = self.fc2(out)
+        out = F.relu(out)
+        out = self.fc3(out)
 
         return out
 
@@ -81,8 +84,9 @@ class LeNet_SBP(nn.Module):
         super(LeNet_SBP, self).__init__()
         self.conv1 = nn.Conv2d(1, 20, 5)
         self.conv2 = nn.Conv2d(20, 50, 5)
-        self.fc1 = nn.Linear(800, 500)
-        self.fc2 = nn.Linear(500, 10)
+        self.fc1 = nn.Linear(800, 800)
+        self.fc2 = nn.Linear(800, 500)
+        self.fc3 = nn.Linear(500, 10)
 
         self.sbp_1 = SBP_layer(20)
         self.sbp_2 = SBP_layer(50)
@@ -96,17 +100,22 @@ class LeNet_SBP(nn.Module):
             out,kl1 = self.sbp_1(out)
             out = F.relu(out)
             out = F.max_pool2d(out, 2)
+            
             out = self.conv2(out)
             out,kl2 = self.sbp_2(out)
             out = F.relu(out)
             out = F.max_pool2d(out, 2)
+            
             out = out.view(out.size(0), -1)
-            out, kl3 = self.sbp_3(out)
+            
             out = self.fc1(out)
+            out, kl3 = self.sbp_3(out)
+            out = F.relu(out)
+            
+            out = self.fc2(out)
             out, kl4 = self.sbp_4(out)
             out = F.relu(out)
-            out = self.fc2(out)
-
+            out = self.fc3(out)
 
             kl_sum = (0.3*kl1+0.3*kl2+0.2*kl3+0.2*kl4)
             return out,kl_sum
@@ -121,13 +130,15 @@ class LeNet_SBP(nn.Module):
             out = F.relu(out)
             out = F.max_pool2d(out, 2)
             out = out.view(out.size(0), -1)
-            out = self.sbp_3(out)
+            
             out = self.fc1(out)
-            out = self.sbp_4(out)
+            out, kl3 = self.sbp_3(out)
             out = F.relu(out)
+            
             out = self.fc2(out)
-
-
+            out, kl4 = self.sbp_4(out)
+            out = F.relu(out)
+            out = self.fc3(out)
             return out
 
     def layerwise_sparsity(self):
