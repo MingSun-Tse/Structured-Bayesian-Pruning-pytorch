@@ -127,6 +127,7 @@ lenet_sbp.conv1.weight = lenet_best.conv1.weight
 lenet_sbp.conv2.weight = lenet_best.conv2.weight
 lenet_sbp.fc1.weight = lenet_best.fc1.weight
 lenet_sbp.fc2.weight = lenet_best.fc2.weight
+lenet_sbp.fc3.weight = lenet_best.fc3.weight
 lenet_sbp.cuda()
 
 for e in range(opt.n_finetune_epoch):

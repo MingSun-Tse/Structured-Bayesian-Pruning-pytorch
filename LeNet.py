@@ -132,11 +132,11 @@ class LeNet_SBP(nn.Module):
             out = out.view(out.size(0), -1)
             
             out = self.fc1(out)
-            out, kl3 = self.sbp_3(out)
+            out = self.sbp_3(out)
             out = F.relu(out)
             
             out = self.fc2(out)
-            out, kl4 = self.sbp_4(out)
+            out = self.sbp_4(out)
             out = F.relu(out)
             out = self.fc3(out)
             return out
